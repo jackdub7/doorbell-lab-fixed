@@ -11,7 +11,7 @@
 #include "lib/client.h"
 #include "lib/colors.h"
 #include "lib/device.h"
-#include "lib/display.h" // Make sure this has the required function declarations
+#include "lib/display.h"
 #include "lib/fonts/fonts.h"
 #include "lib/image.h"
 #include "lib/log.h"
@@ -61,18 +61,18 @@ static int get_entries(const char *folder, char entries[MAX_ENTRIES][MAX_FILE_NA
 }
 
 static void draw_menu(char entries[MAX_ENTRIES][MAX_FILE_NAME], int num, int selected) {
-    display_fill_rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BACKGROUND_COLOR);
+    display_clear(BACKGROUND_COLOR);
 
     for (int i = 0; i < num; ++i) {
         const uint16_t fg = (i == selected) ? SELECTED_FONT_COLOR : FONT_COLOR;
         const uint16_t bg = (i == selected) ? SELECTED_BG_COLOR : BACKGROUND_COLOR;
-        display_draw_text(10, i * 20, entries[i], Font20, fg, bg);
+        display_draw_string(10, i * 20, entries[i], &Font20, bg, fg);
     }
 
     const char *msg = (status_state == STATUS_SENDING) ? "Sending..."
                       : (status_state == STATUS_SENT)  ? "Sent!"
                                                        : "";
-    display_draw_status_bar(msg);
+    display_draw_string(10, DISPLAY_HEIGHT - 20, msg, &Font12, BACKGROUND_COLOR, FONT_COLOR);
 }
 
 static void *send_image_thread(void *varg) {
@@ -227,3 +227,4 @@ int main(void) {
     }
     return 0;
 }
+// maybe maybe
