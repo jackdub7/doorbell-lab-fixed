@@ -11,7 +11,7 @@
 #include "lib/client.h"
 #include "lib/colors.h"
 #include "lib/device.h"
-#include "lib/display.h"
+#include "lib/display.h" // Make sure this has the required function declarations
 #include "lib/fonts/fonts.h"
 #include "lib/image.h"
 #include "lib/log.h"
@@ -26,22 +26,13 @@
 #define SELECTED_BG_COLOR BYU_BLUE
 #define SELECTED_FONT_COLOR BYU_LIGHT_SAND
 
-/* -------------------------------------------------------------------------- */
-/*                              Status handling                               */
-/* -------------------------------------------------------------------------- */
 enum StatusState { STATUS_NONE, STATUS_SENDING, STATUS_SENT };
 volatile enum StatusState status_state = STATUS_NONE;
 
-/* -------------------------------------------------------------------------- */
-/*                               Thread argument                              */
-/* -------------------------------------------------------------------------- */
 typedef struct {
     char filename[MAX_FILE_NAME];
 } ThreadArg;
 
-/* -------------------------------------------------------------------------- */
-/*                               House-keeping                                */
-/* -------------------------------------------------------------------------- */
 void intHandler(int sig) {
     (void)sig;
     log_info("Exiting...");
@@ -49,9 +40,6 @@ void intHandler(int sig) {
     exit(0);
 }
 
-/* -------------------------------------------------------------------------- */
-/*                           Directory-reading helper                         */
-/* -------------------------------------------------------------------------- */
 static int get_entries(const char *folder, char entries[MAX_ENTRIES][MAX_FILE_NAME]) {
     DIR *dp = opendir(folder);
     if (!dp) {
@@ -72,9 +60,6 @@ static int get_entries(const char *folder, char entries[MAX_ENTRIES][MAX_FILE_NA
     return count;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                 UI helper                                  */
-/* -------------------------------------------------------------------------- */
 static void draw_menu(char entries[MAX_ENTRIES][MAX_FILE_NAME], int num, int selected) {
     display_fill_rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BACKGROUND_COLOR);
 
@@ -84,27 +69,20 @@ static void draw_menu(char entries[MAX_ENTRIES][MAX_FILE_NAME], int num, int sel
         display_draw_text(10, i * 20, entries[i], Font20, fg, bg);
     }
 
-    /* Simple status bar message */
-    const char *msg = (status_state == STATUS_SENDING) ? "Sending…"
+    const char *msg = (status_state == STATUS_SENDING) ? "Sending..."
                       : (status_state == STATUS_SENT)  ? "Sent!"
                                                        : "";
     display_draw_status_bar(msg);
 }
 
-/* -------------------------------------------------------------------------- */
-/*                         Worker thread: send image                          */
-/* -------------------------------------------------------------------------- */
 static void *send_image_thread(void *varg) {
     ThreadArg *arg = (ThreadArg *)varg;
-
-    /* Thread owns status_state */
     status_state = STATUS_SENDING;
 
     char path[256];
     snprintf(path, sizeof(path), "%s%s", VIEWER_FOLDER, arg->filename);
     log_info("Thread started, pushing %s", path);
 
-    /* ------- read entire file into buffer --------------------------------- */
     FILE *fp = fopen(path, "rb");
     if (!fp) {
         log_error("Failed to open %s", path);
@@ -129,7 +107,6 @@ static void *send_image_thread(void *varg) {
     fread(buf, 1, fsize, fp);
     fclose(fp);
 
-    /* ------- build payload: HW-ID + raw BMP bytes ------------------------- */
     const char *hw_id = "7EA58328B";
     size_t hwlen = strlen(hw_id);
 
@@ -152,13 +129,11 @@ static void *send_image_thread(void *varg) {
     memcpy(cfg.payload, hw_id, hwlen);
     memcpy(cfg.payload + hwlen, buf, fsize);
 
-    /* ------- talk to the server ------------------------------------------ */
     int sockfd = client_connect(&cfg);
     client_send_image(sockfd, &cfg);
     client_receive_response(sockfd);
     client_close(sockfd);
 
-    /* ------- cleanup ------------------------------------------------------ */
     free(cfg.payload);
     free(buf);
     free(arg);
@@ -170,13 +145,9 @@ static void *send_image_thread(void *varg) {
     return NULL;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                   main                                     */
-/* -------------------------------------------------------------------------- */
 int main(void) {
     signal(SIGINT, intHandler);
-
-    log_info("Starting…");
+    log_info("Starting...");
 
     if (!bcm2835_init()) {
         log_error("BCM2835 init failed!");
@@ -186,8 +157,8 @@ int main(void) {
     display_init();
     buttons_init();
 
-    /* Clean up any stale doorbell.bmp so we don’t re-upload it */
-    if (DIR *dp = opendir(VIEWER_FOLDER)) {
+    DIR *dp = opendir(VIEWER_FOLDER);
+    if (dp) {
         struct dirent *e;
         while ((e = readdir(dp)) != NULL) {
             if (strcmp(e->d_name, "doorbell.bmp") == 0) {
@@ -205,7 +176,6 @@ int main(void) {
 
     draw_menu(entries, num_entries, sel);
 
-    /* ========================== event loop =============================== */
     while (1) {
         delay_ms(200);
 
@@ -216,7 +186,6 @@ int main(void) {
             sel = (sel + 1) % num_entries;
             draw_menu(entries, num_entries, sel);
         } else if (button_center() == 0) {
-            /* ---------------- view BMP if applicable --------------------- */
             const char *fname = entries[sel];
             if (strstr(fname, ".bmp")) {
                 char pth[256];
@@ -245,7 +214,6 @@ int main(void) {
                 }
             }
 
-            /* ---------------- kick off the worker thread ----------------- */
             ThreadArg *targ = malloc(sizeof(ThreadArg));
             if (!targ) {
                 continue;
@@ -254,21 +222,8 @@ int main(void) {
 
             pthread_t tid;
             pthread_create(&tid, NULL, send_image_thread, targ);
-            /* no pthread_detach / join – per instructor, we just let it run */
-
-            /* force UI refresh so that we pick up whatever the thread        */
-            /* changed (status_state == SENDING)                              */
             draw_menu(entries, num_entries, sel);
         }
     }
     return 0;
 }
-
-/* -------------------------------------------------------------------------- */
-/*                              Implementation notes                          */
-/* -------------------------------------------------------------------------- */
-/*
-1.  `CAM_IMAGE_BUF_SIZE` (or whatever constant your `camera.c` exposes) gives
-    you the camera’s raw buffer length.  If you ever need it elsewhere
-    (e.g., future capture code) use that macro instead of `w × h × 3`.
-*/
