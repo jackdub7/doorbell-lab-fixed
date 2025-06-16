@@ -3,6 +3,8 @@
     "editor.formatOnSave": true,
     "files.associations": {
         "client.h": "c",
-        "display.h": "c"
+        "display.h": "c",
+        "colors.h": "c",
+        "device.h": "c"
     }
 }
