@@ -51,7 +51,8 @@ static int get_entries(const char *folder, char entries[MAX_ENTRIES][MAX_FILE_NA
 
     while (count < MAX_ENTRIES && (entry = readdir(dp)) != NULL) {
         if (strstr(entry->d_name, ".bmp") || strstr(entry->d_name, ".log")) {
-            snprintf(entries[count], MAX_FILE_NAME, "%s", entry->d_name);
+            strncpy(entries[count], entry->d_name, MAX_FILE_NAME - 1);
+            entries[count][MAX_FILE_NAME - 1] = '\0';
             ++count;
         }
     }
@@ -163,8 +164,12 @@ int main(void) {
         while ((e = readdir(dp)) != NULL) {
             if (strcmp(e->d_name, "doorbell.bmp") == 0) {
                 char pth[256];
-                snprintf(pth, sizeof(pth), "%s%s", VIEWER_FOLDER, e->d_name);
-                remove(pth);
+                if (strlen(VIEWER_FOLDER) + strlen(e->d_name) < sizeof(pth)) {
+                    snprintf(pth, sizeof(pth), "%s%s", VIEWER_FOLDER, e->d_name);
+                    remove(pth);
+                } else {
+                    log_error("Filename too long: %s%s", VIEWER_FOLDER, e->d_name);
+                }
             }
         }
         closedir(dp);
@@ -218,7 +223,8 @@ int main(void) {
             if (!targ) {
                 continue;
             }
-            snprintf(targ->filename, MAX_FILE_NAME, "%s", entries[sel]);
+            strncpy(targ->filename, entries[sel], MAX_FILE_NAME - 1);
+            targ->filename[MAX_FILE_NAME - 1] = '\0';
 
             pthread_t tid;
             pthread_create(&tid, NULL, send_image_thread, targ);
@@ -227,4 +233,4 @@ int main(void) {
     }
     return 0;
 }
-// maybe maybe
+// new
