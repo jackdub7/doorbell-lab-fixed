@@ -118,7 +118,7 @@ void draw_file(char *folder, char *file_name) {
 
 void *send_image(void *arg) {
     ThreadArg *thread_arg = (ThreadArg *)arg;
-
+    status_state = STATUS_SENDING;
     uint8_t *buf = thread_arg->buf;
     size_t buffer_size = thread_arg->buffer_size;
 
@@ -137,13 +137,13 @@ void *send_image(void *arg) {
     client_receive_response(sockfd);
     client_close(sockfd);
 
-    pthread_mutex_lock(&status_mutex);
     status_state = STATUS_SENT;
-    sent_time = time(NULL);
-    pthread_mutex_unlock(&status_mutex);
+
+    delay_ms(2000);
 
     free(buf);
     free(thread_arg);
+    status_state = STATUS_NONE;
 
     return NULL;
 }
@@ -268,6 +268,7 @@ int main(void) {
 
                 if (image_changed) {
                     display_draw_image_data(bmp->pxl_data, bmp->img_width, bmp->img_height);
+                    reset_pixel_data(bmp);
                     draw_status_bar();
                     image_changed = false;
                 }
@@ -288,13 +289,12 @@ int main(void) {
                     viewing = false;
 
                     size_t hw_id_len = 9;
-                    size_t bmp_header_size = 54;
-                    size_t image_data_size = bmp->img_width * bmp->img_height * 3;
-                    size_t total_payload_size = hw_id_len + image_data_size;
+
+                    size_t total_payload_size = hw_id_len + IMG_SIZE;
 
                     uint8_t *payload = malloc(total_payload_size);
                     memcpy(payload, HW_ID, hw_id_len);
-                    memcpy(payload + hw_id_len, buf + bmp_header_size, image_data_size);
+                    memcpy(payload + hw_id_len, buf, IMG_SIZE);
 
                     log_info("HW_ID bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X",
                              payload[0], payload[1], payload[2], payload[3], payload[4], payload[5],
@@ -305,11 +305,7 @@ int main(void) {
                     thread_arg->buf = payload;
                     thread_arg->buffer_size = total_payload_size;
 
-                    pthread_mutex_lock(&status_mutex);
-                    status_state = STATUS_SENDING;
-                    pthread_mutex_unlock(&status_mutex);
-
-                    pthread_create(&thread_id, NULL, send_image, thread_arg);
+                    pthread_create(&thread_id, NULL, send_image, (void *)thread_arg);
                     pthread_detach(thread_id);
 
                     while (button_center() == 0) {
