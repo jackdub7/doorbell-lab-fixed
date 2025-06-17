@@ -34,7 +34,7 @@ enum StatusState { STATUS_NONE, STATUS_SENDING, STATUS_SENT };
 
 volatile enum StatusState status_state = STATUS_NONE;
 volatile time_t sent_time = 0;
-pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
+enum StatusState last_drawn_status = STATUS_NONE;
 
 // Thread argument struct
 typedef struct {
@@ -67,7 +67,6 @@ int get_entries(char *folder, char entries[][MAX_FILE_NAME]) {
         if (!dot) {
             continue;
         }
-
         if (strcmp(dot, ".bmp") == 0 || strcmp(dot, ".log") == 0) {
             strncpy(entries[count], dir->d_name, MAX_FILE_NAME);
             entries[count][MAX_FILE_NAME - 1] = '\0';
@@ -81,11 +80,9 @@ int get_entries(char *folder, char entries[][MAX_FILE_NAME]) {
 
 void draw_menu(char entries[][MAX_FILE_NAME], int num_entries, int selected) {
     display_clear(BACKGROUND_COLOR);
-
     for (int i = 0; i < num_entries; i++) {
         uint16_t bg = (i == selected) ? SELECTED_BG_COLOR : BACKGROUND_COLOR;
         uint16_t fg = (i == selected) ? SELECTED_FONT_COLOR : FONT_COLOR;
-
         display_draw_rectangle(0, i * 20, 127, i * 20 + 20, bg, true, 1);
         display_draw_string(5, i * 20, entries[i], &Font12, bg, fg);
     }
@@ -94,7 +91,6 @@ void draw_menu(char entries[][MAX_FILE_NAME], int num_entries, int selected) {
 void draw_file(char *folder, char *file_name) {
     char path[200];
     snprintf(path, sizeof(path), "%s%s", folder, file_name);
-
     const char *ext = strrchr(file_name, '.');
     if (ext && strcmp(ext, ".bmp") == 0) {
         display_draw_image(path);
@@ -107,11 +103,9 @@ void draw_file(char *folder, char *file_name) {
         char buffer[MAX_TEXT_SIZE + 1] = {0};
         fread(buffer, 1, MAX_TEXT_SIZE, f);
         fclose(f);
-
         display_clear(BACKGROUND_COLOR);
         display_draw_string(0, 0, buffer, &Font8, BACKGROUND_COLOR, FONT_COLOR);
     }
-
     draw_status_bar();
     delay_ms(2000);
 }
@@ -131,18 +125,15 @@ void *send_image(void *arg) {
     };
 
     log_info("Sending image: payload_size=%zu", buffer_size);
-
     int sockfd = client_connect(&config);
     client_send_image(sockfd, &config);
     client_receive_response(sockfd);
     client_close(sockfd);
 
     status_state = STATUS_SENT;
-
     sent_time = time(NULL);
 
     delay_ms(2000);
-
     free(buf);
     free(thread_arg);
     status_state = STATUS_NONE;
@@ -151,9 +142,13 @@ void *send_image(void *arg) {
 }
 
 void draw_status_bar(void) {
-
     int bar_height = 12;
     int y_start = 128 - bar_height;
+
+    if (status_state == last_drawn_status) {
+        return;
+    }
+    last_drawn_status = status_state;
 
     if (status_state == STATUS_NONE) {
         display_draw_rectangle(0, y_start, 127, 127, BACKGROUND_COLOR, true, 1);
@@ -163,16 +158,12 @@ void draw_status_bar(void) {
     uint16_t color = (status_state == STATUS_SENDING) ? BYU_BLUE : GREEN;
     const char *text = (status_state == STATUS_SENDING) ? "Sending..." : "Sent!";
 
-    display_draw_rectangle(0, y_start, 127, 127, BACKGROUND_COLOR, true, 1);
-
     display_draw_rectangle(0, y_start, 127, 127, color, true, 1);
-
     display_draw_string(3, y_start + 2, text, &Font8, color, WHITE);
 }
 
 int main(void) {
     signal(SIGINT, intHandler);
-
     log_info("Starting...");
 
     if (!bcm2835_init()) {
@@ -242,7 +233,6 @@ int main(void) {
             size_t buffer_size = 128 * 128 * 3 + 54;
             uint8_t *buf = malloc(buffer_size);
             if (!buf) {
-                log_error("Failed to allocate buffer for image");
                 continue;
             }
 
@@ -251,13 +241,10 @@ int main(void) {
 
             Bitmap *bmp = malloc(sizeof(Bitmap));
             if (!bmp) {
-                log_error("Failed to allocate Bitmap struct");
                 free(buf);
                 continue;
             }
-
             if (create_bmp(bmp, buf) != 0) {
-                log_error("Failed to parse BMP data");
                 free(buf);
                 free(bmp);
                 continue;
@@ -268,7 +255,6 @@ int main(void) {
 
             while (viewing) {
                 delay_ms(100);
-
                 if (image_changed) {
                     display_draw_image_data(bmp->pxl_data, bmp->img_width, bmp->img_height);
                     reset_pixel_data(bmp);
@@ -290,18 +276,12 @@ int main(void) {
                     image_changed = true;
                 } else if (button_center() == 0) {
                     viewing = false;
-
                     size_t hw_id_len = 9;
-
                     size_t total_payload_size = hw_id_len + IMG_SIZE;
 
                     uint8_t *payload = malloc(total_payload_size);
                     memcpy(payload, HW_ID, hw_id_len);
                     memcpy(payload + hw_id_len, buf, IMG_SIZE);
-
-                    log_info("HW_ID bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-                             payload[0], payload[1], payload[2], payload[3], payload[4], payload[5],
-                             payload[6], payload[7], payload[8]);
 
                     pthread_t thread_id;
                     ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
@@ -310,7 +290,6 @@ int main(void) {
 
                     pthread_create(&thread_id, NULL, send_image, (void *)thread_arg);
                     pthread_detach(thread_id);
-
                     while (button_center() == 0) {
                         delay_ms(1);
                     }
@@ -324,11 +303,9 @@ int main(void) {
 
             destroy_bmp(bmp);
             free(bmp);
-
             num_entries = get_entries(VIEWER_FOLDER, entries);
             draw_menu(entries, num_entries, selected);
             draw_status_bar();
-
             while (button_center() == 0) {
                 delay_ms(1);
             }
@@ -346,4 +323,4 @@ int main(void) {
 
     return 0;
 }
-// back to start again my friend
+// another one but better
