@@ -114,7 +114,7 @@ static void *send_image_thread(void *varg) {
     Config cfg = {
         .host = "ecen224.byu.edu",
         .port = "2240",
-        .hw_id = hw_id,
+        .hw_id = (const char *)hw_id,
         .payload_size = hwlen + fsize,
     };
 
@@ -164,12 +164,8 @@ int main(void) {
         while ((e = readdir(dp)) != NULL) {
             if (strcmp(e->d_name, "doorbell.bmp") == 0) {
                 char pth[256];
-                if (strlen(VIEWER_FOLDER) + strlen(e->d_name) < sizeof(pth)) {
-                    snprintf(pth, sizeof(pth), "%s%s", VIEWER_FOLDER, e->d_name);
-                    remove(pth);
-                } else {
-                    log_error("Filename too long: %s%s", VIEWER_FOLDER, e->d_name);
-                }
+                snprintf(pth, sizeof(pth), "%s%.200s", VIEWER_FOLDER, e->d_name);
+                remove(pth);
             }
         }
         closedir(dp);
@@ -233,4 +229,4 @@ int main(void) {
     }
     return 0;
 }
-// new
+// another one
