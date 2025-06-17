@@ -139,6 +139,8 @@ void *send_image(void *arg) {
 
     status_state = STATUS_SENT;
 
+    sent_time = time(NULL);
+
     delay_ms(2000);
 
     free(buf);
@@ -149,22 +151,21 @@ void *send_image(void *arg) {
 }
 
 void draw_status_bar(void) {
-    enum StatusState local_status;
-
-    pthread_mutex_lock(&status_mutex);
-    local_status = status_state;
-    pthread_mutex_unlock(&status_mutex);
-
-    if (local_status == STATUS_NONE) {
+    if (status_state == STATUS_NONE) {
         return;
     }
 
-    uint16_t color = (local_status == STATUS_SENDING) ? BYU_BLUE : GREEN;
-    const char *text = (local_status == STATUS_SENDING) ? "Sending..." : "Sent!";
+    int bar_height = 12;
+    int y_start = 128 - bar_height;
 
-    display_draw_rectangle(0, 160 - 20, 127, 160, BACKGROUND_COLOR, true, 1);
-    display_draw_rectangle(0, 160 - 20, 127, 160, color, true, 1);
-    display_draw_string(5, 160 - 18, text, &Font12, color, WHITE);
+    uint16_t color = (status_state == STATUS_SENDING) ? BYU_BLUE : GREEN;
+    const char *text = (status_state == STATUS_SENDING) ? "Sending..." : "Sent!";
+
+    display_draw_rectangle(0, y_start, 127, 127, BACKGROUND_COLOR, true, 1);
+
+    display_draw_rectangle(0, y_start, 127, 127, color, true, 1);
+
+    display_draw_string(3, y_start + 2, text, &Font8, color, WHITE);
 }
 
 int main(void) {
