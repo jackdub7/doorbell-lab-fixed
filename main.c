@@ -151,12 +151,14 @@ void *send_image(void *arg) {
 }
 
 void draw_status_bar(void) {
-    if (status_state == STATUS_NONE) {
-        return;
-    }
 
     int bar_height = 12;
     int y_start = 128 - bar_height;
+
+    if (status_state == STATUS_NONE) {
+        display_draw_rectangle(0, y_start, 127, 127, BACKGROUND_COLOR, true, 1);
+        return;
+    }
 
     uint16_t color = (status_state == STATUS_SENDING) ? BYU_BLUE : GREEN;
     const char *text = (status_state == STATUS_SENDING) ? "Sending..." : "Sent!";
@@ -332,14 +334,12 @@ int main(void) {
             }
         }
 
-        pthread_mutex_lock(&status_mutex);
         if (status_state == STATUS_SENT) {
             time_t current_time = time(NULL);
             if (current_time - sent_time >= 2) {
                 status_state = STATUS_NONE;
             }
         }
-        pthread_mutex_unlock(&status_mutex);
 
         draw_status_bar();
     }
