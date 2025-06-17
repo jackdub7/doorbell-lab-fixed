@@ -4,11 +4,11 @@
 // Contains all of the information needed to create to connect to the server and
 // send it a message.
 typedef struct Config {
-    char *port;
-    char *host;
+    const char *port;
+    const char *host;
     uint8_t *payload;
     uint32_t payload_size;
-    char *hw_id;
+    const char *hw_id;
 } Config;
 
 /**
